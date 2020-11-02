@@ -208,16 +208,46 @@ void to442_sobel(Mat in){
  
 // I LEFT THIS THE SAME
 void to442_greyscale(Mat in){
-    Mat out = in;
-    for (int i = 0; i < in.cols; i++){
-        for (int j = 0; j < in.rows; j++){
-            Vec3b greyscale_color = in.at<Vec3b>(Point(i, j));
-            float grey_chan = 0.0722 * greyscale_color[0] + 0.2126 * 
-                            greyscale_color[1] + 0.7152 * greyscale_color[2];
-            greyscale_color[0] = grey_chan;
-            greyscale_color[1] = grey_chan;
-            greyscale_color[2] = grey_chan;
-            in.at<Vec3b>(Point(i, j)) = greyscale_color;
+        float32_t blue_chan[4];
+        float32_t green_chan[4];
+        float32_t red_chan[4];
+        float32_t grey_chan[4];
+
+        float32_t red_scalar = 0.2126;
+        float32_t blue_scalar = 0.7142;
+        float32_t green_scalar = 0.0722;
+
+
+        // sizeof(float) == 4
+        // sizeof(double) == 8
+
+        Mat out = in;
+
+        for (int i = 0; i < in.cols; i++){
+                for(int j = 0; j < in.rows; j+=4){
+                        for(int k = 0; k < 4 && j + k < in.rows; k++){
+                                Vec3b pixel = in.at<Vec3b>(Point(i, (j + k)));
+                                blue_chan[k] = pixel[0];
+                                red_chan[k] = pixel[1];
+                                green_chan[k] = pixel[2];
+                        }
+
+                        float32x4_t blue_vec = vld1q_f32(blue_chan);
+                        float32x4_t green_vec = vld1q_f32(green_chan);
+                        float32x4_t red_vec = vld1q_f32(red_chan);
+
+                        red_vec = vmulq_n_f32(red_vec, red_scalar);
+                        blue_vec = vmulq_n_f32(blue_vec, blue_scalar);
+                        green_vec = vmulq_n_f32(green_vec, green_scalar);
+                        
+                        float32x4_t grey_vec;
+                        grey_vec = vaddq_f32(red_vec, blue_vec);
+                        grey_vec = vaddq_f32(grey_vec, green_vec);
+
+                        vst1q_f32(grey_chan, grey_vec);
+                        for(int k = 0; k < 4 && j + k < in.rows; k++){
+                                in.at<Vec3b>(Point(i, (j +k))) = Vec3b(grey_chan[k], grey_chan[k], grey_chan[k]);
+                        }
+                }
         }
-    }
 }
