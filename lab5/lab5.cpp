@@ -149,29 +149,32 @@ void to442_sobel(Mat in){
 }*/
 
 // do not include the middle pixel in each since it is unchanged and need a vector of 16b
-const signed char G[16] = {-1, 0, 1, -2, 2, -1, 0, 1, -1, -2, -1, 0, 0, 1, 2, 1};
+const int16_t Gx[] = {-1, 0, 1, -2, 2, -1, 0, 1};
+                  const int16_t Gy[]=      {-1, -2, -1, 0, 0, 1, 2, 1};
 
 void to442_sobel(Mat in){
     // copy to preserve original, in is now out
     Mat copy = in.clone();
-    signed char Px = 0;
-    signed char Py = 0;
 
-    for(int x = 0; x<in.cols-1; x++){
-        for(int y = 0; y<in.rows-1; y++){
-            signed char a = copy.at<Vec3b>(Point(x-1,y-1))[0]; // top left pixel
-            signed char b = copy.at<Vec3b>(Point(x-1,y))[0]; // top middle pixel
-            signed char c = copy.at<Vec3b>(Point(x-1,y+1))[0];
-            signed char d = copy.at<Vec3b>(Point(x,y-1))[0];
+    for(int x = 1; x<in.cols-1; x++){
+        for(int y = 1; y<in.rows-1; y++){
+            int16_t Px = 0;
+            int16_t Py = 0;
+            int16_t a = copy.at<Vec3b>(Point(x-1,y-1))[0]; // top left pixel
+            int16_t b = copy.at<Vec3b>(Point(x-1,y))[0]; // top middle pixel
+            int16_t c = copy.at<Vec3b>(Point(x-1,y+1))[0];
+            int16_t d = copy.at<Vec3b>(Point(x,y-1))[0];
             //signed char mid = copy.at<Vec3b>(Point(x,y))[0];
-            signed char f = copy.at<Vec3b>(Point(x,y+1))[0];
-            signed char g = copy.at<Vec3b>(Point(x+1,y-1))[0];
-            signed char h = copy.at<Vec3b>(Point(x+1,y))[0];
-            signed char i = copy.at<Vec3b>(Point(x+1,y+1))[0];
-            signed char matrix[16] = {a,b,c,d,f,g,h,i,a,b,c,d,f,g,h,i};
-            int8x16_t f_vector = vld1q_s8(matrix);
-            int8x16_t g_vector = vld1q_s8(G);
-            int8x16_t mult_vector = vmulq_s8(f_vector, g_vector);
+            int16_t f = copy.at<Vec3b>(Point(x,y+1))[0];
+            int16_t g = copy.at<Vec3b>(Point(x+1,y-1))[0];
+            int16_t h = copy.at<Vec3b>(Point(x+1,y))[0];
+            int16_t i = copy.at<Vec3b>(Point(x+1,y+1))[0];
+            int16_t matrix[] = {a,b,c,d,f,g,h,i};
+            int16x8_t f_vector = vld1q_s16(matrix);
+            int16x8_t gx_vector = vld1q_s16(Gx);
+            int16x8_t gy_vector = vld1q_s16(Gy);
+            int16x8_t multx_vector = vmulq_s16(f_vector, gx_vector);
+            int16x8_t multy_vector = vmulq_s16(f_vector, gy_vector);
             /*for(signed char k = 0; k < 8; k++){
                 Px += vgetq_lane_s8(mult_vector,k);
             }
@@ -179,26 +182,26 @@ void to442_sobel(Mat in){
                 Py += vgetq_lane_s8(mult_vector,k);
             }*/
             
-            Px += vgetq_lane_s8(mult_vector,0);
-            Px += vgetq_lane_s8(mult_vector,1);
-            Px += vgetq_lane_s8(mult_vector,2);
-            Px += vgetq_lane_s8(mult_vector,3);
-            Px += vgetq_lane_s8(mult_vector,4);
-            Px += vgetq_lane_s8(mult_vector,5);
-            Px += vgetq_lane_s8(mult_vector,6);
-            Px += vgetq_lane_s8(mult_vector,7);
+            Px += vgetq_lane_s16(multx_vector,0);
+            Px += vgetq_lane_s16(multx_vector,1);
+            Px += vgetq_lane_s16(multx_vector,2);
+            Px += vgetq_lane_s16(multx_vector,3);
+            Px += vgetq_lane_s16(multx_vector,4);
+            Px += vgetq_lane_s16(multx_vector,5);
+            Px += vgetq_lane_s16(multx_vector,6);
+            Px += vgetq_lane_s16(multx_vector,7);
 
-            Py += vgetq_lane_s8(mult_vector,8);
-            Py += vgetq_lane_s8(mult_vector,9);
-            Py += vgetq_lane_s8(mult_vector,10);
-            Py += vgetq_lane_s8(mult_vector,11);
-            Py += vgetq_lane_s8(mult_vector,12);
-            Py += vgetq_lane_s8(mult_vector,13);
-            Py += vgetq_lane_s8(mult_vector,14);
-            Py += vgetq_lane_s8(mult_vector,15);
+            Py += vgetq_lane_s16(multy_vector,0);
+            Py += vgetq_lane_s16(multy_vector,1);
+            Py += vgetq_lane_s16(multy_vector,2);
+            Py += vgetq_lane_s16(multy_vector,3);
+            Py += vgetq_lane_s16(multy_vector,4);
+            Py += vgetq_lane_s16(multy_vector,5);
+            Py += vgetq_lane_s16(multy_vector,6);
+            Py += vgetq_lane_s16(multy_vector,7);
             
             Px = abs(Px) + abs(Py);
-            in.at<Vec3b>(Point(x,y))[0] = Px;
+            in.at<Vec3b>(Point(x,y)) = Vec3b(Px,Px,Px);
         }
     }
 }
