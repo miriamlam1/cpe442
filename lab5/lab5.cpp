@@ -149,7 +149,7 @@ void to442_sobel(Mat in){
 }*/
 
 // do not include the middle pixel in each since it is unchanged and need a vector of 16b
-static const signed char G[16] = {-1, 0, 1, -2, 2, -1, 0, 1, -1, -2, -1, 0, 0, 1, 2, 1};
+const signed char G[16] = {-1, 0, 1, -2, 2, -1, 0, 1, -1, -2, -1, 0, 0, 1, 2, 1};
 
 void to442_sobel(Mat in){
     // copy to preserve original, in is now out
@@ -172,12 +172,31 @@ void to442_sobel(Mat in){
             int8x16_t f_vector = vld1q_s8(matrix);
             int8x16_t g_vector = vld1q_s8(G);
             int8x16_t mult_vector = vmulq_s8(f_vector, g_vector);
-            for(int k = 0; k < 8; k++){
+            /*for(signed char k = 0; k < 8; k++){
                 Px += vgetq_lane_s8(mult_vector,k);
             }
-            for(int k = 8; k < 16; k++){
+            for(signed char k = 8; k < 16; k++){
                 Py += vgetq_lane_s8(mult_vector,k);
-            }
+            }*/
+            
+            Px += vgetq_lane_s8(mult_vector,0);
+            Px += vgetq_lane_s8(mult_vector,1);
+            Px += vgetq_lane_s8(mult_vector,2);
+            Px += vgetq_lane_s8(mult_vector,3);
+            Px += vgetq_lane_s8(mult_vector,4);
+            Px += vgetq_lane_s8(mult_vector,5);
+            Px += vgetq_lane_s8(mult_vector,6);
+            Px += vgetq_lane_s8(mult_vector,7);
+
+            Py += vgetq_lane_s8(mult_vector,8);
+            Py += vgetq_lane_s8(mult_vector,9);
+            Py += vgetq_lane_s8(mult_vector,10);
+            Py += vgetq_lane_s8(mult_vector,11);
+            Py += vgetq_lane_s8(mult_vector,12);
+            Py += vgetq_lane_s8(mult_vector,13);
+            Py += vgetq_lane_s8(mult_vector,14);
+            Py += vgetq_lane_s8(mult_vector,15);
+            
             Px = abs(Px) + abs(Py);
             in.at<Vec3b>(Point(x,y))[0] = Px;
         }
