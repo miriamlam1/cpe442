@@ -118,7 +118,7 @@ void* grey_and_sobel(void* frame_ptr){
     mythreadframe -> cache_misses = libperf_readcounter(pd, LIBPERF_COUNT_HW_CACHE_MISSES);
     libperf_disablecounter(pd, LIBPERF_COUNT_HW_CPU_CYCLES);
     libperf_disablecounter(pd, LIBPERF_COUNT_HW_CACHE_MISSES);
-    libperf_close(pd);
+    //libperf_close(pd);
     pthread_exit(NULL); // exit because its done with thread at this point
    
 }
