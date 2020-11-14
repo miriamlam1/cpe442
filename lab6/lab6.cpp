@@ -12,6 +12,7 @@
 #include "libperf.h"
 #include <opencv2/imgproc.hpp>
 #include <inttypes.h> /* for PRIu64 definition */
+#include <chrono>
  
 using namespace cv;
 using namespace std;
@@ -36,34 +37,39 @@ static Mat kernely = (Mat_<char>(3, 3) << 1, 2, 1,
  
 static int y = 0;
 int height;
-
+ 
+ typedef struct tf{
+     Mat quarter;
+     uint64_t cpu_cycles;
+     uint64_t cache_misses;
+ } ThreadFrame;
+ 
 // main
 int main(int argc, char **argv){
     if (argc < 2){
-        cout << "empty path" << endl;
-        //EXIT(EXIT_FAILURE); // fail
+        cout << "ERROR: Not enough arguments\n Usage: ./lab6.exe myvideo.mp4" << endl;
+        return EXIT_FAILURE;
 	return -1;
     }
-    struct libperf_data *pd = libperf_initialize(-1, -1);                      /* init lib */
-    libperf_enablecounter(pd, LIBPERF_COUNT_HW_INSTRUCTIONS);                  /* enable HW counter */
+    
     VideoCapture vc(argv[1]);
     init_frames(vc);
-    uint64_t counter = libperf_readcounter(pd, LIBPERF_COUNT_HW_INSTRUCTIONS); /* obtain counter value */
-    libperf_disablecounter(pd, LIBPERF_COUNT_HW_INSTRUCTIONS);                 /* disable HW counter */
-    fprintf(stdout, "counter read: %" PRIu64 "\n", counter);                   /* printout */
-    FILE *log = libperf_getlogger(pd);                                         /* get log file stream */
-    fprintf(log, "custom log message\n");                                      /* print a custom log message */
-    libperf_finalize(pd, 0);                                                   /* log all counter values */
-    //EXIT(EXIT_SUCCESS); // success
+    double fps = vc.get(CAP_PROP_FPS);
+    cout << "FPS of original video : " << fps << endl;
+    vc.release();
+    
     return EXIT_SUCCESS;
 }
  
 void init_frames(VideoCapture vc){
+    int frame_count = 1;
     Mat frame;
     String windowName = "Multi-Threaded Sobel";
     vc >> frame;
     height = frame.rows;
+    cout << "For video of height: "<< height << " and width of: " << frame.cols << endl;
     
+    auto start = std::chrono::high_resolution_clock::now();
     while (!frame.empty()){
      
         // Do stuff with frame
@@ -77,17 +83,35 @@ void init_frames(VideoCapture vc){
             break;
             
         vc >> frame;
+        frame_count ++;
     }
+    // fps calculations
+    auto finish = std::chrono::high_resolution_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(finish-start).count();
+    cout<< "total frames: " << frame_count << " total time(ms): " <<duration << endl;
+    float avg_fps = (float(frame_count)*1000)/float(duration);
+    cout<< "average FPS: " << avg_fps << endl;
 }
  
 // each quarter runs this thread
 void* grey_and_sobel(void* frame_ptr){
     
-    Mat frame = *(Mat*)(frame_ptr);
+    struct libperf_data *pd = libperf_initialize(-1, -1);
+    libperf_enablecounter(pd, LIBPERF_COUNT_HW_CPU_CYCLES);
+    
+    ThreadFrame * mythreadframe = (ThreadFrame*) frame_ptr;
+    Mat frame = mythreadframe->quarter;
     to442_greyscale(frame);
     to442_sobel(frame);
     
+    uint64_t counter = libperf_readcounter(pd, LIBPERF_COUNT_HW_CPU_CYCLES);
+    libperf_disablecounter(pd, LIBPERF_COUNT_HW_CPU_CYCLES);
+    //fprintf(stdout, "counter read: %" PRIu64 "\n", counter);
+    //cout << "counter read: " << counter << endl;
+    
     pthread_exit(NULL); // exit because its done with thread at this point
+    return (void*)counter;
+    libperf_close(pd);
 }
  
 Mat divide_image(Mat frame){
@@ -123,8 +147,12 @@ Mat divide_image(Mat frame){
     }
     
      // do the threads
+    uint64_t ccount = 0;
     for(i=0; i<NUM_THREADS; i++){
-        pthread_create (&threads[i], NULL, grey_and_sobel, &(quarter_arr[i]));
+        ThreadFrame *newThread;
+        newThread = (ThreadFrame*)malloc(sizeof(ThreadFrame));
+        newThread -> quarter = quarter_arr[i];
+        uint64_t(pthread_create (&threads[i], NULL, grey_and_sobel, newThread));
     }
  
     // crop the image to output
@@ -164,7 +192,7 @@ void to442_sobel(Mat in){
 
 // do not include the middle pixel in each since it is unchanged and need a vector of 16b
 const int16_t Gx[] = {-1, 0, 1, -2, 2, -1, 0, 1};
-                  const int16_t Gy[]=      {-1, -2, -1, 0, 0, 1, 2, 1};
+const int16_t Gy[]=  {-1, -2, -1, 0, 0, 1, 2, 1};
 
 void to442_sobel(Mat in){
     // copy to preserve original, in is now out
@@ -178,7 +206,7 @@ void to442_sobel(Mat in){
             int16_t b = copy.at<Vec3b>(Point(x-1,y))[0]; // top middle pixel
             int16_t c = copy.at<Vec3b>(Point(x-1,y+1))[0];
             int16_t d = copy.at<Vec3b>(Point(x,y-1))[0];
-            int16_t mid = copy.at<Vec3b>(Point(x,y))[0];
+            //int16_t mid = copy.at<Vec3b>(Point(x,y))[0];
             int16_t f = copy.at<Vec3b>(Point(x,y+1))[0];
             int16_t g = copy.at<Vec3b>(Point(x+1,y-1))[0];
             int16_t h = copy.at<Vec3b>(Point(x+1,y))[0];
