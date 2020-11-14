@@ -164,7 +164,7 @@ void to442_sobel(Mat in){
             int16_t b = copy.at<Vec3b>(Point(x-1,y))[0]; // top middle pixel
             int16_t c = copy.at<Vec3b>(Point(x-1,y+1))[0];
             int16_t d = copy.at<Vec3b>(Point(x,y-1))[0];
-            //signed char mid = copy.at<Vec3b>(Point(x,y))[0];
+            int16_t mid = copy.at<Vec3b>(Point(x,y))[0];
             int16_t f = copy.at<Vec3b>(Point(x,y+1))[0];
             int16_t g = copy.at<Vec3b>(Point(x+1,y-1))[0];
             int16_t h = copy.at<Vec3b>(Point(x+1,y))[0];
@@ -175,12 +175,6 @@ void to442_sobel(Mat in){
             int16x8_t gy_vector = vld1q_s16(Gy);
             int16x8_t multx_vector = vmulq_s16(f_vector, gx_vector);
             int16x8_t multy_vector = vmulq_s16(f_vector, gy_vector);
-            /*for(signed char k = 0; k < 8; k++){
-                Px += vgetq_lane_s8(mult_vector,k);
-            }
-            for(signed char k = 8; k < 16; k++){
-                Py += vgetq_lane_s8(mult_vector,k);
-            }*/
             
             Px += vgetq_lane_s16(multx_vector,0);
             Px += vgetq_lane_s16(multx_vector,1);
