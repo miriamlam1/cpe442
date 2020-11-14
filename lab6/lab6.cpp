@@ -98,20 +98,22 @@ void* grey_and_sobel(void* frame_ptr){
     
     struct libperf_data *pd = libperf_initialize(-1, -1);
     libperf_enablecounter(pd, LIBPERF_COUNT_HW_CPU_CYCLES);
+    libperf_enablecounter(pd, LIBPERF_COUNT_HW_CACHE_MISSES);
     
-    ThreadFrame * mythreadframe = (ThreadFrame*) frame_ptr;
+    ThreadFrame* mythreadframe = (ThreadFrame*) frame_ptr;
     Mat frame = mythreadframe->quarter;
+    
+    //filters
     to442_greyscale(frame);
     to442_sobel(frame);
     
-    uint64_t counter = libperf_readcounter(pd, LIBPERF_COUNT_HW_CPU_CYCLES);
+    mythreadframe -> cpu_cycles = libperf_readcounter(pd, LIBPERF_COUNT_HW_CPU_CYCLES);
+    mythreadframe -> cache_misses = libperf_readcounter(pd, LIBPERF_COUNT_HW_CACHE_MISSES);
     libperf_disablecounter(pd, LIBPERF_COUNT_HW_CPU_CYCLES);
-    //fprintf(stdout, "counter read: %" PRIu64 "\n", counter);
-    //cout << "counter read: " << counter << endl;
-    
-    pthread_exit(NULL); // exit because its done with thread at this point
-    return (void*)counter;
+    libperf_disablecounter(pd, LIBPERF_COUNT_HW_CACHE_MISSES);
     libperf_close(pd);
+    pthread_exit(NULL); // exit because its done with thread at this point
+   
 }
  
 Mat divide_image(Mat frame){
@@ -147,12 +149,14 @@ Mat divide_image(Mat frame){
     }
     
      // do the threads
-    uint64_t ccount = 0;
     for(i=0; i<NUM_THREADS; i++){
-        ThreadFrame *newThread;
-        newThread = (ThreadFrame*)malloc(sizeof(ThreadFrame));
-        newThread -> quarter = quarter_arr[i];
-        uint64_t(pthread_create (&threads[i], NULL, grey_and_sobel, newThread));
+        ThreadFrame newThread = {.quarter = quarter_arr[i],
+            .cpu_cycles = 0,
+            .cache_misses = 0};
+        //~ newThread = (ThreadFrame*)malloc(sizeof(ThreadFrame));
+        //~ newThread -> quarter = quarter_arr[i];
+        //~ cout << "Tsdfasdfasdfr" << endl;
+        pthread_create (&threads[i], NULL, grey_and_sobel, &newThread);
     }
  
     // crop the image to output
