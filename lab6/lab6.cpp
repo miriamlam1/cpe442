@@ -13,10 +13,12 @@
 #include <opencv2/imgproc.hpp>
 #include <inttypes.h> /* for PRIu64 definition */
 #include <chrono>
- 
+ #define NUM_THREADS 4
 using namespace cv;
 using namespace std;
- 
+
+static uint64_t total_cache_misses[NUM_THREADS];
+static uint64_t total_cpu_cycles[NUM_THREADS];
 // init functions
 void init_frames(VideoCapture vc);
 void to442_greyscale(Mat frame);
@@ -25,7 +27,7 @@ void* grey_and_sobel(Mat frame);
 Mat divide_image(Mat frame);
  
 #define WAIT 10
-#define NUM_THREADS 4
+
 #define BUFFER 2 // sobel overlap in pixels. should be 2
  
 static Mat kernelx = (Mat_<char>(3, 3) << -1, 0, 1,
@@ -37,6 +39,7 @@ static Mat kernely = (Mat_<char>(3, 3) << 1, 2, 1,
  
 static int y = 0;
 int height;
+
  
  typedef struct tf{
      Mat quarter;
@@ -91,6 +94,10 @@ void init_frames(VideoCapture vc){
     cout<< "total frames: " << frame_count << " total time(ms): " <<duration << endl;
     float avg_fps = (float(frame_count)*1000)/float(duration);
     cout<< "average FPS: " << avg_fps << endl;
+    for(int i=0;i<NUM_THREADS;i++){
+        cout<< "core: " << i << " | cache misses: " <<total_cache_misses[i] << endl;
+        cout<< "       " << " | cpu cycles:   " << total_cpu_cycles[i] << endl;
+    }
 }
  
 // each quarter runs this thread
@@ -148,15 +155,19 @@ Mat divide_image(Mat frame){
         }
     }
     
-     // do the threads
+    ThreadFrame newThread[NUM_THREADS];
+    
     for(i=0; i<NUM_THREADS; i++){
-        ThreadFrame newThread = {.quarter = quarter_arr[i],
+        newThread[i] = {.quarter = quarter_arr[i],
             .cpu_cycles = 0,
             .cache_misses = 0};
+    }
+    
+    for(i=0; i<NUM_THREADS; i++){
         //~ newThread = (ThreadFrame*)malloc(sizeof(ThreadFrame));
         //~ newThread -> quarter = quarter_arr[i];
         //~ cout << "Tsdfasdfasdfr" << endl;
-        pthread_create (&threads[i], NULL, grey_and_sobel, &newThread);
+        pthread_create (&threads[i], NULL, grey_and_sobel, &newThread[i]);
     }
  
     // crop the image to output
@@ -169,7 +180,10 @@ Mat divide_image(Mat frame){
     for(int i=0;i<NUM_THREADS;i++){
         if(pthread_join(threads[i],NULL)<0)
             cout << "Thread join error" << endl;
+        total_cpu_cycles[i] += newThread[i].cpu_cycles;
+        total_cache_misses[i] += newThread[i].cache_misses;
     }
+
         
     // concatenate the images together
     Mat out;
