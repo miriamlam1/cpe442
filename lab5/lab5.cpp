@@ -20,7 +20,7 @@ void to442_sobel(Mat in, Mat out, uint16_t qcol, uint16_t qrow);
 void* grey_and_sobel(Mat frame);
 Mat divide_image(Mat frame);
  
-#define WAIT 10
+#define WAIT 1
 #define NUM_THREADS 4
 #define BUFFER 1 // sobel overlap in pixels. should be 2
  
@@ -130,8 +130,8 @@ const int16_t Gx[] = {-1, 0, 1, -2, 2, -1, 0, 1};
                   const int16_t Gy[]=      {-1, -2, -1, 0, 0, 1, 2, 1};
 
 void to442_sobel(Mat in, Mat out, uint16_t qcol, uint16_t qrow){
-    for(int x = 1; x<in.cols-1; x++){
-        for(int y = 1; y<in.rows-1; y++){
+    for(int x = qcol; x< qcol+quartersize; x++){
+        for(int y = 1; y<qrow; y++){
             int16_t Px = 0;
             int16_t Py = 0;
             int16_t a = in.at<Vec3b>(Point(x-1,y-1))[0]; // top left pixel
