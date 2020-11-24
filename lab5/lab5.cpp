@@ -8,6 +8,7 @@
 #include <iostream>
 #include <arm_neon.h>
 #include <opencv2/imgproc.hpp>
+#include <chrono>
  
 using namespace cv;
 using namespace std;
@@ -15,23 +16,16 @@ using namespace std;
 // init functions
 void init_frames(VideoCapture vc);
 void to442_greyscale(Mat frame);
-void to442_sobel(Mat in);
+void to442_sobel(Mat in, Mat out, uint16_t qcol, uint16_t qrow);
 void* grey_and_sobel(Mat frame);
 Mat divide_image(Mat frame);
  
 #define WAIT 10
 #define NUM_THREADS 4
-#define BUFFER 2 // sobel overlap in pixels. should be 2
+#define BUFFER 1 // sobel overlap in pixels. should be 2
  
-static Mat kernelx = (Mat_<char>(3, 3) << -1, 0, 1,
-                   -2, 0, 2,
-                    - 1, 0, 1);
-static Mat kernely = (Mat_<char>(3, 3) << 1, 2, 1,
-                   0, 0, 0,
-                   -1, -2, -1);
- 
-static int y = 0;
-int height;
+//static int y = 0;
+uint16_t height;
  
 // main
 int main(int argc, char **argv){
@@ -44,12 +38,20 @@ int main(int argc, char **argv){
     return 0; // success
 }
  
+typedef struct thread{
+     Mat *in;
+     Mat *out;
+     int quarter;
+ } ThreadFrame;
+ 
 void init_frames(VideoCapture vc){
     Mat frame;
     String windowName = "Multi-Threaded Sobel";
     vc >> frame;
     height = frame.rows;
-    
+    int framecount = 0;
+    cout << "For video of height: "<< height << " and width of: " << frame.cols << endl;
+    auto start = std::chrono::high_resolution_clock::now();
     while (!frame.empty()){
      
         // Do stuff with frame
@@ -63,119 +65,90 @@ void init_frames(VideoCapture vc){
             break;
             
         vc >> frame;
+        framecount++;
     }
+    
+    auto finish = std::chrono::high_resolution_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(finish-start).count();
+    cout<< "total frames: " << framecount << " total time(ms): " <<duration << endl;
+    float avg_fps = (float(framecount)*1000)/float(duration);
+    cout<< "average FPS: " << avg_fps << endl;
 }
+ 
+ int quartersize;
  
 // each quarter runs this thread
 void* grey_and_sobel(void* frame_ptr){
     
-    Mat frame = *(Mat*)(frame_ptr);
+    ThreadFrame* mythreadframe = (ThreadFrame*) frame_ptr;
+    Mat frame = (Mat)(*mythreadframe->in);
+    Mat out = (Mat)(*mythreadframe->out);
+    int quarter = mythreadframe->quarter;
+
     to442_greyscale(frame);
-    to442_sobel(frame);
+    
+    uint16_t qcol = quarter*quartersize;
+    to442_sobel(frame, out, qcol, height);
     
     pthread_exit(NULL); // exit because its done with thread at this point
 }
+
+
  
 Mat divide_image(Mat frame){
     int i; // counter
-    Mat quarter;
-    Mat quarter_arr[NUM_THREADS]; // list of the 4 quarters
-    Mat quarter_arr2[NUM_THREADS]; // output quarters
+    Mat out = frame.clone();
+    quartersize = frame.cols/NUM_THREADS;
     pthread_t threads[NUM_THREADS]; // list of threads
+    ThreadFrame threadarray[NUM_THREADS];
  
-    // left to right: splitting like this [1|2|3|4]
-    int newcols = frame.cols/NUM_THREADS;
-    
-    // first frame only have right overlap
-    Mat copy = frame.clone(); // copy to not sobel overlap original frame
-    quarter_arr[0] = copy(Rect(0,0,newcols+BUFFER,height));
-    
-    // this for loop separates into quarters
-    for(i=1; i<NUM_THREADS; i++){
-        int x = newcols*i - BUFFER;
-        int width;
-        
-        // last frame only have left overlap
-        if(i == NUM_THREADS-1){
-            width = newcols+BUFFER;
-            copy = frame.clone();
-            quarter_arr[i] = copy(Rect(x,y,newcols+BUFFER,height));
-        // middle frames overlap left and right
-        } else {
-            width = newcols + BUFFER*2;
-            copy = frame.clone();
-            quarter_arr[i] = copy(Rect(x,y,width,height));
-        }
-    }
-    
-     // do the threads
+    // init thread struct
     for(i=0; i<NUM_THREADS; i++){
-        pthread_create (&threads[i], NULL, grey_and_sobel, &(quarter_arr[i]));
+        threadarray[i]=  {.in = &frame,
+            .out = &out,
+            .quarter = i};
+    };
+    
+    // start the threads
+    for(i=0; i<NUM_THREADS; i++){
+        pthread_create (&threads[i], NULL, grey_and_sobel, &threadarray[i]);
     }
- 
-    // crop the image to output
-    quarter_arr2[0] = quarter_arr[0](Rect(0,0,newcols,height));
-    for(int i=1;i<NUM_THREADS;i++){
-         quarter_arr2[i] = quarter_arr[i](Rect(BUFFER,0,newcols,height));
-    }
- 
+
     // wait for all 4 threads to terminate
     for(int i=0;i<NUM_THREADS;i++){
         if(pthread_join(threads[i],NULL)<0)
             cout << "Thread join error" << endl;
     }
-        
-    // concatenate the images together
-    Mat out;
-    // hconcat(quarter_arr2, out); THIS COMMAND DOESNT WORK WHY
-    hconcat(quarter_arr2[0],quarter_arr2[1], out);
-    for(i=2;i<NUM_THREADS;i++)
-        hconcat(out,quarter_arr2[i], out);
     
     return out;
  
 }
  
-// removed so we can do our own vector math
- /*
-void to442_sobel(Mat in){
-    Mat dstx;
-    filter2D(in, dstx, -1, kernelx);
-    Mat dsty;
-    filter2D(in, dsty, -1, kernely);
-    abs(dstx);
-    abs(dsty);
-    add(dstx, dsty, in);
-}*/
 
 // do not include the middle pixel in each since it is unchanged and need a vector of 16b
 const int16_t Gx[] = {-1, 0, 1, -2, 2, -1, 0, 1};
                   const int16_t Gy[]=      {-1, -2, -1, 0, 0, 1, 2, 1};
 
-void to442_sobel(Mat in){
-    // copy to preserve original, in is now out
-    Mat copy = in.clone();
-
+void to442_sobel(Mat in, Mat out, uint16_t qcol, uint16_t qrow){
     for(int x = 1; x<in.cols-1; x++){
         for(int y = 1; y<in.rows-1; y++){
             int16_t Px = 0;
             int16_t Py = 0;
-            int16_t a = copy.at<Vec3b>(Point(x-1,y-1))[0]; // top left pixel
-            int16_t b = copy.at<Vec3b>(Point(x-1,y))[0]; // top middle pixel
-            int16_t c = copy.at<Vec3b>(Point(x-1,y+1))[0];
-            int16_t d = copy.at<Vec3b>(Point(x,y-1))[0];
-            int16_t mid = copy.at<Vec3b>(Point(x,y))[0];
-            int16_t f = copy.at<Vec3b>(Point(x,y+1))[0];
-            int16_t g = copy.at<Vec3b>(Point(x+1,y-1))[0];
-            int16_t h = copy.at<Vec3b>(Point(x+1,y))[0];
-            int16_t i = copy.at<Vec3b>(Point(x+1,y+1))[0];
+            int16_t a = in.at<Vec3b>(Point(x-1,y-1))[0]; // top left pixel
+            int16_t b = in.at<Vec3b>(Point(x-1,y))[0]; // top middle pixel
+            int16_t c = in.at<Vec3b>(Point(x-1,y+1))[0];
+            int16_t d = in.at<Vec3b>(Point(x,y-1))[0];
+            //int16_t mid = copy.at<Vec3b>(Point(x,y))[0];
+            int16_t f = in.at<Vec3b>(Point(x,y+1))[0];
+            int16_t g = in.at<Vec3b>(Point(x+1,y-1))[0];
+            int16_t h = in.at<Vec3b>(Point(x+1,y))[0];
+            int16_t i = in.at<Vec3b>(Point(x+1,y+1))[0];
             int16_t matrix[] = {a,b,c,d,f,g,h,i};
             int16x8_t f_vector = vld1q_s16(matrix);
             int16x8_t gx_vector = vld1q_s16(Gx);
             int16x8_t gy_vector = vld1q_s16(Gy);
             int16x8_t multx_vector = vmulq_s16(f_vector, gx_vector);
             int16x8_t multy_vector = vmulq_s16(f_vector, gy_vector);
-            
             Px += vgetq_lane_s16(multx_vector,0);
             Px += vgetq_lane_s16(multx_vector,1);
             Px += vgetq_lane_s16(multx_vector,2);
@@ -195,7 +168,7 @@ void to442_sobel(Mat in){
             Py += vgetq_lane_s16(multy_vector,7);
             
             Px = abs(Px) + abs(Py);
-            in.at<Vec3b>(Point(x,y)) = Vec3b(Px,Px,Px);
+            out.at<Vec3b>(Point(x,y)) = Vec3b(Px,Px,Px);
         }
     }
 }
@@ -211,11 +184,6 @@ void to442_greyscale(Mat in){
         float32_t blue_scalar = 0.7142;
         float32_t green_scalar = 0.0722;
 
-
-        // sizeof(float) == 4
-        // sizeof(double) == 8
-
-        Mat out = in;
 
         for (int i = 0; i < in.cols; i++){
                 for(int j = 0; j < in.rows; j+=4){
