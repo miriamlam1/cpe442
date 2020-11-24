@@ -1,5 +1,5 @@
 CC = g++
-FLAGS = -Wall -g -O3 -mfpu=neon -mcpu=Cortex-A8 -ftree-vectorize -std=c++11
+FLAGS = -Wall -g -Ofast -mfpu=neon -mcpu=Cortex-A8 -ftree-vectorize -std=c++11
 MAIN = lab5exe
 OPENCV = `pkg-config opencv --cflags --libs`
 LIBS = $(OPENCV) -pthread
